@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weekly Goals</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #222222;
+      --muted: #6b6b6b;
+      --border: #dddddd;
+      --accent: #2f6fdb;
+      --done: #9a9a9a;
+      --badge: #fff3d6;
+      --badge-text: #8a5a00;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1b1b1d;
+        --card: #252528;
+        --text: #eeeeee;
+        --muted: #a0a0a0;
+        --border: #3a3a3e;
+        --accent: #6a9cff;
+        --done: #777777;
+        --badge: #3d3320;
+        --badge-text: #f2c66d;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px 16px 48px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.4;
+    }
+
+    main { max-width: 640px; margin: 0 auto; }
+
+    h1 { margin: 0 0 4px; }
+    h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+    .subtitle { margin: 0 0 20px; color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    form { display: flex; gap: 8px; margin-bottom: 12px; }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button {
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button.link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 4px 6px;
+    }
+
+    button.link:hover { color: var(--text); }
+
+    ul { list-style: none; margin: 0; padding: 0; }
+
+    li.goal {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    li.goal:first-child { border-top: none; }
+
+    li.goal label { flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    li.goal input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+    li.goal.done .text { color: var(--done); text-decoration: line-through; }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--badge);
+      color: var(--badge-text);
+      white-space: nowrap;
+    }
+
+    .progress { margin-top: 12px; color: var(--muted); font-size: 0.9rem; }
+    .empty { color: var(--muted); padding: 8px 0; }
+
+    details {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+
+    summary { cursor: pointer; font-weight: 600; }
+    summary .count { font-weight: 400; color: var(--muted); }
+    details ul { margin-top: 8px; }
+    details li { padding: 4px 0; }
+    details li.done { color: var(--done); }
+
+    footer { margin-top: 32px; font-size: 0.85rem; color: var(--muted); }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Weekly Goals</h1>
+    <p class="subtitle" id="week-label"></p>
+
+    <div class="card">
+      <form id="add-form">
+        <input type="text" id="new-goal" placeholder="Add a goal for this week" autocomplete="off" required>
+        <button type="submit">Add</button>
+      </form>
+      <ul id="goal-list"></ul>
+      <p class="progress" id="progress"></p>
+    </div>
+
+    <h2>Past weeks</h2>
+    <div id="archive"></div>
+
+    <footer>
+      Every Monday the previous week is archived and anything unfinished moves to the new list.
+      Goals are saved in this browser.
+      <br><a href="../index.html">Back to portfolio</a>
+    </footer>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "weeklyGoals";
+
+    // Returns the Monday (local time) of the week containing `date`, as "YYYY-MM-DD".
+    function mondayOf(date) {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const daysSinceMonday = (d.getDay() + 6) % 7;
+      d.setDate(d.getDate() - daysSinceMonday);
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${mm}-${dd}`;
+    }
+
+    function formatWeek(weekStart) {
+      const [y, m, d] = weekStart.split("-").map(Number);
+      const start = new Date(y, m - 1, d);
+      const end = new Date(y, m - 1, d + 6);
+      const opts = { month: "short", day: "numeric" };
+      return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, { ...opts, year: "numeric" })}`;
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved && saved.current) return saved;
+      } catch (e) { /* fall through to a fresh state */ }
+      return { current: { weekStart: mondayOf(new Date()), goals: [] }, archive: [] };
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) { /* storage unavailable; changes last until the page closes */ }
+    }
+
+    // If a new week has started, archive the old list and carry unfinished goals forward.
+    function rollOverIfNewWeek() {
+      const thisWeek = mondayOf(new Date());
+      if (state.current.weekStart >= thisWeek) return;
+
+      const old = state.current;
+      if (old.goals.length > 0) {
+        state.archive.unshift({
+          weekStart: old.weekStart,
+          goals: old.goals.map(g => ({ text: g.text, done: g.done })),
+        });
+      }
+
+      state.current = {
+        weekStart: thisWeek,
+        goals: old.goals
+          .filter(g => !g.done)
+          .map(g => ({ ...g, carriedOver: (g.carriedOver || 0) + 1 })),
+      };
+      saveState();
+    }
+
+    function renderCurrent() {
+      const list = document.getElementById("goal-list");
+      const goals = state.current.goals;
+      document.getElementById("week-label").textContent = "Week of " + formatWeek(state.current.weekStart);
+      list.innerHTML = "";
+
+      if (goals.length === 0) {
+        list.innerHTML = '<li class="empty">No goals yet — add one above.</li>';
+      }
+
+      goals.forEach(goal => {
+        const li = document.createElement("li");
+        li.className = "goal" + (goal.done ? " done" : "");
+
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = goal.done;
+        checkbox.addEventListener("change", () => {
+          goal.done = checkbox.checked;
+          saveState();
+          render();
+        });
+
+        const text = document.createElement("span");
+        text.className = "text";
+        text.textContent = goal.text;
+        label.append(checkbox, text);
+        li.append(label);
+
+        if (goal.carriedOver) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = goal.carriedOver === 1 ? "carried over" : `carried over ×${goal.carriedOver}`;
+          badge.title = `Unfinished for ${goal.carriedOver} previous week(s)`;
+          li.append(badge);
+        }
+
+        const remove = document.createElement("button");
+        remove.className = "link";
+        remove.textContent = "✕";
+        remove.setAttribute("aria-label", `Remove "${goal.text}"`);
+        remove.addEventListener("click", () => {
+          state.current.goals = state.current.goals.filter(g => g.id !== goal.id);
+          saveState();
+          render();
+        });
+        li.append(remove);
+
+        list.append(li);
+      });
+
+      const doneCount = goals.filter(g => g.done).length;
+      document.getElementById("progress").textContent =
+        goals.length ? `${doneCount} of ${goals.length} complete` : "";
+    }
+
+    function renderArchive() {
+      const container = document.getElementById("archive");
+      container.innerHTML = "";
+
+      if (state.archive.length === 0) {
+        container.innerHTML = '<p class="empty">Nothing archived yet. Your first week will show up here next Monday.</p>';
+        return;
+      }
+
+      state.archive.forEach(week => {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        const doneCount = week.goals.filter(g => g.done).length;
+        summary.textContent = formatWeek(week.weekStart) + " ";
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = `(${doneCount}/${week.goals.length} done)`;
+        summary.append(count);
+        details.append(summary);
+
+        const ul = document.createElement("ul");
+        week.goals.forEach(g => {
+          const li = document.createElement("li");
+          li.className = g.done ? "done" : "";
+          li.textContent = (g.done ? "✓ " : "○ ") + g.text;
+          ul.append(li);
+        });
+        details.append(ul);
+        container.append(details);
+      });
+    }
+
+    function render() {
+      renderCurrent();
+      renderArchive();
+    }
+
+    document.getElementById("add-form").addEventListener("submit", event => {
+      event.preventDefault();
+      const input = document.getElementById("new-goal");
+      const text = input.value.trim();
+      if (!text) return;
+      state.current.goals.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, done: false });
+      input.value = "";
+      saveState();
+      render();
+    });
+
+    // Re-check when the tab regains focus, so a page left open over the weekend still rolls over.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        rollOverIfNewWeek();
+        render();
+      }
+    });
+
+    const state = loadState();
+    rollOverIfNewWeek();
+    render();
+  </script>
+</body>
+
+</html>
